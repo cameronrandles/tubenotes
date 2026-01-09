@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Terms of Service | TubeNotes</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      @keyframes gradient-shift {
+        0% {
+          background-position: 0% 50%;
+        }
+        50% {
+          background-position: 100% 50%;
+        }
+        100% {
+          background-position: 0% 50%;
+        }
+      }
+
+      @keyframes float {
+        0%,
+        100% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-20px);
+        }
+      }
+
+      @keyframes shimmer {
+        0% {
+          background-position: -1000px 0;
+        }
+        100% {
+          background-position: 1000px 0;
+        }
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: linear-gradient(-45deg, #0f0c29, #302b63, #24243e, #0f0c29);
+        background-size: 400% 400%;
+        animation: gradient-shift 15s ease infinite;
+        color: white;
+        min-height: 100vh;
+        overflow-x: hidden;
+        line-height: 1.6;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image: radial-gradient(
+            circle at 20% 50%,
+            rgba(167, 139, 250, 0.1) 0%,
+            transparent 50%
+          ),
+          radial-gradient(
+            circle at 80% 80%,
+            rgba(244, 114, 182, 0.1) 0%,
+            transparent 50%
+          ),
+          radial-gradient(
+            circle at 40% 20%,
+            rgba(59, 130, 246, 0.1) 0%,
+            transparent 50%
+          );
+        animation: float 20s ease-in-out infinite;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      header {
+        background: rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 20px 0;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+
+      header h1 {
+        text-align: center;
+        font-size: 2.5rem;
+        font-weight: 900;
+        background: linear-gradient(
+          135deg,
+          #a78bfa 0%,
+          #f472b6 50%,
+          #3b82f6 100%
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 15px;
+        animation: shimmer 3s linear infinite;
+        background-size: 1000px 100%;
+      }
+
+      nav ul {
+        display: flex;
+        justify-content: center;
+        gap: 30px;
+        list-style: none;
+      }
+
+      nav a {
+        color: rgba(255, 255, 255, 0.8);
+        text-decoration: none;
+        font-size: 16px;
+        transition: all 0.3s ease;
+        position: relative;
+        padding: 5px 10px;
+      }
+
+      nav a::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 0;
+        height: 2px;
+        background: linear-gradient(135deg, #a78bfa, #f472b6);
+        transition: width 0.3s ease;
+      }
+
+      nav a:hover {
+        color: white;
+      }
+
+      nav a:hover::after {
+        width: 100%;
+      }
+
+      main {
+        max-width: 900px;
+        margin: 60px auto;
+        padding: 40px;
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(20px);
+        border-radius: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+        position: relative;
+        z-index: 1;
+      }
+
+      main h2 {
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+        background: linear-gradient(135deg, #a78bfa, #f472b6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-weight: 800;
+      }
+
+      main h3 {
+        font-size: 1.5rem;
+        margin-top: 40px;
+        margin-bottom: 15px;
+        color: #a78bfa;
+        font-weight: 700;
+      }
+
+      main p {
+        margin-bottom: 20px;
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 16px;
+      }
+
+      main a {
+        color: #f472b6;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        border-bottom: 1px solid transparent;
+      }
+
+      main a:hover {
+        color: #a78bfa;
+        border-bottom-color: #a78bfa;
+      }
+
+      footer {
+        text-align: center;
+        padding: 40px 20px;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(10px);
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        margin-top: 80px;
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      @media (max-width: 768px) {
+        header h1 {
+          font-size: 2rem;
+        }
+
+        nav ul {
+          flex-direction: column;
+          gap: 15px;
+        }
+
+        main {
+          margin: 30px 20px;
+          padding: 30px 20px;
+        }
+
+        main h2 {
+          font-size: 2rem;
+        }
+
+        main h3 {
+          font-size: 1.3rem;
+        }
+      }
+
+      ::-webkit-scrollbar {
+        width: 10px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.3);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #a78bfa, #f472b6);
+        border-radius: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1><a href="/">tubenotes</a></h1>
+      <nav>
+        <ul>
+          <li><a href="/">Home</a></li>
+          <li><a href="/privacy-policy">Privacy Policy</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main>
+      <h2>Terms of Service</h2>
+      <p>Last updated: December 23, 2025</p>
+
+      <h3>1. Acceptance of Terms</h3>
+      <p>
+        By accessing and using TubeNotes, you accept and agree to be bound by
+        the terms and provisions of this agreement. Additionally, by using
+        TubeNotes, users are agreeing to be bound by the
+        <a href="https://www.youtube.com/t/terms">YouTube Terms of Service</a>.
+      </p>
+
+      <h3>2. Changes to Terms</h3>
+      <p>
+        We reserve the right to modify these terms at any time. Your continued
+        use of the site signifies your acceptance of any changes.
+      </p>
+
+      <h3>3. Use of Service</h3>
+      <p>
+        You agree not to misuse the service and to follow all applicable laws
+        and regulations.
+      </p>
+
+      <h3>4. Termination</h3>
+      <p>
+        We may terminate or suspend your access to TubeNotes at any time,
+        without prior notice or liability.
+      </p>
+
+      <h3>5. Contact</h3>
+      <p>
+        If you have any questions about these Terms, please contact us at
+        camrandles@gmail.com.
+      </p>
+    </main>
+
+    <footer>
+      <p>&copy; 2025 TubeNotes. All rights reserved.</p>
+    </footer>
+  </body>
+</html>

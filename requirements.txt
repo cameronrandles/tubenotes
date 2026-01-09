@@ -1,0 +1,7 @@
+Flask==3.1.2
+Werkzeug==3.1.4
+youtube-transcript-api==1.2.3
+google-api-python-client==2.187.0
+google-generativeai==0.8.6
+yt-dlp==2025.12.8
+gunicorn==21.2.0
