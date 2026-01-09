@@ -7,6 +7,7 @@ try:
     from summarize import summarize_transcript
     from youtube_transcript_api import YouTubeTranscriptApi
     import yt_dlp
+    import re
     import json
 except ImportError as e:
     print(f"Import error: {e}", file=sys.stderr)
@@ -365,9 +366,10 @@ username = 'spreyxql9i'
 password = 'wshQvA4MCk90jck5u='
 proxy = f"http://{username}:{password}@us.decodo.com:10000"
 
+
 def fetch_transcript(video_id):
     if not isinstance(video_id, str) or not video_id.strip():
-        raise ValueError("Invalid video ID provided")
+        raise ValueError("Invalid video ID")
     
     url = f"https://www.youtube.com/watch?v={video_id}"
     
@@ -377,33 +379,56 @@ def fetch_transcript(video_id):
         'writeautomaticsub': True,
         'subtitleslangs': ['en'],
         'quiet': True,
-        'no_warnings': True
+        'no_warnings': True,
+        'nocheckcertificate': True,
     }
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
-            # Try to get subtitles
+            # Get subtitles
+            subtitles = None
             if 'subtitles' in info and 'en' in info['subtitles']:
-                subtitle_url = info['subtitles']['en'][0]['url']
+                subtitles = info['subtitles']['en']
             elif 'automatic_captions' in info and 'en' in info['automatic_captions']:
-                subtitle_url = info['automatic_captions']['en'][0]['url']
+                subtitles = info['automatic_captions']['en']
             else:
                 raise Exception("No English subtitles found")
             
+            # Find the best subtitle format
+            subtitle_url = None
+            for sub in subtitles:
+                if sub.get('ext') in ['json3', 'srv3', 'srv2', 'srv1']:
+                    subtitle_url = sub.get('url')
+                    break
+            
+            if not subtitle_url:
+                raise Exception("No suitable subtitle format found")
+            
             # Download and parse subtitles
-            import requests
-            response = requests.get(subtitle_url)
+            import urllib.request
+            import json
             
-            # Parse subtitle content (simplified)
-            lines = response.text.split('\n')
-            transcript_text = ' '.join([line.strip() for line in lines if line.strip() and not line.strip().isdigit() and '-->' not in line])
+            response = urllib.request.urlopen(subtitle_url)
+            data = json.loads(response.read())
             
-            return transcript_text
+            # Extract text from JSON3 format
+            transcript_text = ""
+            if 'events' in data:
+                for event in data['events']:
+                    if 'segs' in event:
+                        for seg in event['segs']:
+                            if 'utf8' in seg:
+                                transcript_text += seg['utf8'] + " "
+            
+            if not transcript_text.strip():
+                raise ValueError("Transcript is empty")
+            
+            return transcript_text.strip()
             
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"yt-dlp error: {e}")
         raise Exception(f"Failed to fetch transcript: {str(e)}")
 
 # Run the test
