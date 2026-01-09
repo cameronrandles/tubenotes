@@ -1,5 +1,0 @@
-4. Caching Issues
-Browser Cache:
-Clear your browser cache or try accessing the domain in incognito mode.
-Vercel Cache:
-Vercel caches static assets. If you've updated your project but one domain still shows an old version, you may need to redeploy or clear the cache.
