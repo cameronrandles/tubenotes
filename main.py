@@ -476,5 +476,50 @@ def test_transcript():
         'results': results
     })
 
+@app.route('/test-proxy-config')
+def test_proxy_config():
+    """Test proxy configuration"""
+    import requests
+    
+    config_info = {
+        'proxy_configured': proxy_url is not None,
+        'host': DECODO_HOST if DECODO_USERNAME else None,
+        'port': DECODO_PORT if DECODO_USERNAME else None,
+        'country': 'any',
+    }
+    
+    if not proxy_url:
+        return jsonify({
+            **config_info,
+            'status': 'No proxy configured'
+        })
+    
+    try:
+        # Test proxy connection
+        proxies = {'http': proxy_url, 'https': proxy_url}
+        
+        response = requests.get(
+            'https://api.ipify.org?format=json',
+            proxies=proxies,
+            timeout=10
+        )
+        
+        ip_data = response.json()
+        
+        return jsonify({
+            **config_info,
+            'status': 'working',
+            'proxy_ip': ip_data.get('ip'),
+            'message': '✓ Proxy is working correctly'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            **config_info,
+            'status': 'error',
+            'error': str(e),
+            'message': '✗ Proxy connection failed'
+        }), 500
+
 if __name__ == "__main__":
     app.run()
