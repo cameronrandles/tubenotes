@@ -446,79 +446,32 @@ def fetch_transcript(video_id):
     raise Exception("Failed to fetch transcript")
 
 
-@app.route('/test-transcript')
-def test_transcript():
-    """Test with videos known to have captions"""
-    test_videos = [
-        'jNQXAC9IVRw',  # "Me at the zoo" - first YouTube video
-        'dQw4w9WgXcQ',  # Rick Astley - Never Gonna Give You Up
-        '9bZkp7q19f0',  # PSY - Gangnam Style
-    ]
-    
-    results = {}
-    
-    for video_id in test_videos:
-        try:
-            transcript = fetch_transcript(video_id)
-            results[video_id] = {
-                'success': True,
-                'length': len(transcript),
-                'preview': transcript[:200]
-            }
-        except Exception as e:
-            results[video_id] = {
-                'success': False,
-                'error': str(e)
-            }
-    
-    return jsonify({
-        'youtube_transcript_api_version': YouTubeTranscriptApi.__version__,
-        'results': results
-    })
 
-@app.route('/test-proxy-config')
-def test_proxy_config():
-    """Test proxy configuration"""
-    import requests
-    
-    config_info = {
-        'proxy_configured': proxy_url is not None,
-        'host': DECODO_HOST if DECODO_USERNAME else None,
-        'port': DECODO_PORT if DECODO_USERNAME else None,
-        'country': 'any',
-    }
-    
-    if not proxy_url:
-        return jsonify({
-            **config_info,
-            'status': 'No proxy configured'
-        })
+@app.route('/test-transcript-with-proxy')
+def test_transcript_with_proxy():
+    """Test if transcript fetching works with proxy"""
+    test_video_id = 'jNQXAC9IVRw'  # "Me at the zoo" - known to have captions
     
     try:
-        # Test proxy connection
-        proxies = {'http': proxy_url, 'https': proxy_url}
-        
-        response = requests.get(
-            'https://api.ipify.org?format=json',
-            proxies=proxies,
-            timeout=10
-        )
-        
-        ip_data = response.json()
+        print(f"Testing transcript fetch for {test_video_id}")
+        transcript = fetch_transcript(test_video_id)
         
         return jsonify({
-            **config_info,
-            'status': 'working',
-            'proxy_ip': ip_data.get('ip'),
-            'message': '✓ Proxy is working correctly'
+            'status': 'success',
+            'video_id': test_video_id,
+            'transcript_length': len(transcript),
+            'preview': transcript[:200],
+            'proxy_used': proxy_url is not None,
+            'message': '✓ Transcript fetching is working!'
         })
         
     except Exception as e:
         return jsonify({
-            **config_info,
             'status': 'error',
+            'video_id': test_video_id,
             'error': str(e),
-            'message': '✗ Proxy connection failed'
+            'proxy_used': proxy_url is not None,
+            'message': '✗ Transcript fetching failed'
         }), 500
 
 if __name__ == "__main__":
