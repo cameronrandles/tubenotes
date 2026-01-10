@@ -6,6 +6,8 @@ import json
 # Initialize LLM
 model = genai.GenerativeModel("gemini-2.5-flash")
 
+genai.configure(api_key="AIzaSyAw2yMjsAR9HcjMw8-XnMdd_CGFRwwdfjU")
+
 def summarize_transcript(transcript):
     prompt = f"""Summarize the following text using two bullets per section.
     {transcript}

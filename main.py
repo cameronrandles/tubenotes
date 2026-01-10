@@ -6,9 +6,8 @@ try:
     from googleapiclient.discovery import build
     from summarize import summarize_transcript
     from youtube_transcript_api import YouTubeTranscriptApi
-    import yt_dlp
-    import re
-    import json
+    from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound, TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
+    import time
 except ImportError as e:
     print(f"Import error: {e}", file=sys.stderr)
     raise
@@ -360,92 +359,94 @@ def set_page_tokens(response):
     session['next_page_token'] = response.get('nextPageToken')
     session['prev_page_token'] = response.get('prevPageToken')
 
-# Set proxy IP address
-url = 'https://ip.decodo.com/json'
-username = 'spreyxql9i'
-password = 'wshQvA4MCk90jck5u='
-proxy = f"http://{username}:{password}@us.decodo.com:10000"
+
+# Decodo proxy settings
+DECODO_USERNAME = os.environ.get('DECODO_USERNAME')
+DECODO_PASSWORD = os.environ.get('DECODO_PASSWORD')
+DECODO_HOST = os.environ.get('DECODO_HOST', 'gate.decodo.com')
+DECODO_PORT = os.environ.get('DECODO_PORT', '8080')
+
+# Build proxy URL
+if DECODO_USERNAME and DECODO_PASSWORD:
+    proxy_url = f"http://{DECODO_USERNAME}:{DECODO_PASSWORD}@{DECODO_HOST}:{DECODO_PORT}"
+else:
+    proxy_url = None
+
+print(f"Proxy configured: {proxy_url[:30] if proxy_url else 'None'}...")
 
 
 def fetch_transcript(video_id):
     if not isinstance(video_id, str) or not video_id.strip():
         raise ValueError("Invalid video ID")
-    
-    errors = []
-    
-    # Method 1: youtube-transcript-api
-    try:
-        print("Trying youtube-transcript-api...")
-        transcript_data = YouTubeTranscriptApi.get_transcript(
-            video_id,
-            languages=['en']
-        )
-        transcript_text = " ".join([entry['text'] for entry in transcript_data])
-        if transcript_text.strip():
-            return transcript_text
-    except Exception as e:
-        errors.append(f"youtube-transcript-api: {str(e)}")
-        print(f"Method 1 failed: {e}")
-    
-    # Method 2: yt-dlp with different options
-    try:
-        print("Trying yt-dlp...")
-        url = f"https://www.youtube.com/watch?v={video_id}"
-        
-        ydl_opts = {
-            'skip_download': True,
-            'writesubtitles': True,
-            'writeautomaticsub': True,
-            'subtitleslangs': ['en'],
-            'quiet': True,
-            'no_warnings': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android'],
-                }
-            }
-        }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            
-            # Get subtitles
-            subtitles = None
-            if 'subtitles' in info and 'en' in info['subtitles']:
-                subtitles = info['subtitles']['en']
-            elif 'automatic_captions' in info and 'en' in info['automatic_captions']:
-                subtitles = info['automatic_captions']['en']
-            
-            if subtitles:
-                for sub in subtitles:
-                    if sub.get('ext') in ['json3', 'srv3']:
-                        subtitle_url = sub.get('url')
-                        if subtitle_url:
-                            import urllib.request
-                            import json
-                            
-                            response = urllib.request.urlopen(subtitle_url)
-                            data = json.loads(response.read())
-                            
-                            transcript_text = ""
-                            if 'events' in data:
-                                for event in data['events']:
-                                    if 'segs' in event:
-                                        for seg in event['segs']:
-                                            if 'utf8' in seg:
-                                                transcript_text += seg['utf8'] + " "
-                            
-                            if transcript_text.strip():
-                                return transcript_text.strip()
-    except Exception as e:
-        errors.append(f"yt-dlp: {str(e)}")
-        print(f"Method 2 failed: {e}")
-    
-    # All methods failed
-    error_msg = " | ".join(errors)
-    raise Exception(f"All transcript methods failed: {error_msg}")
 
-# Run the test
+    # Configure proxies
+    proxies = None
+    if proxy_url:
+        proxies = {
+            'http': proxy_url,
+            'https': proxy_url
+        }
+        print(f"Using proxy for transcript fetch")
+    else:
+        print("WARNING: No proxy configured, may get blocked by YouTube")
+    
+    max_retries = 3
+    
+    for attempt in range(max_retries):
+        try:
+            time.sleep(1 * (attempt + 1))  # Exponential backoff
+            
+            print(f"Attempt {attempt + 1}/{max_retries} fetching transcript for {video_id}")
+            
+            # Try with proxy
+            if proxies:
+                transcript_data = YouTubeTranscriptApi.get_transcript(
+                    video_id,
+                    languages=['en', 'es', 'hi'],
+                    proxies=proxies
+                )
+            else:
+                transcript_data = YouTubeTranscriptApi.get_transcript(
+                    video_id,
+                    languages=['en', 'es', 'hi']
+                )
+            
+            # Combine transcript text
+            transcript_text = " ".join([entry['text'] for entry in transcript_data])
+            
+            if not transcript_text.strip():
+                raise ValueError("Transcript is empty")
+            
+            print(f"✓ Successfully fetched transcript: {len(transcript_text)} characters")
+            return transcript_text
+            
+        except TranscriptsDisabled:
+            raise Exception("This video has transcripts disabled")
+            
+        except NoTranscriptFound:
+            raise Exception("No transcript available in English, Spanish, or Hindi")
+            
+        except VideoUnavailable:
+            raise Exception("Video is unavailable or private")
+            
+        except Exception as e:
+            error_msg = str(e).lower()
+            print(f"Attempt {attempt + 1} failed: {e}")
+            
+            # Check if it's a bot detection error
+            if "sign in" in error_msg or "bot" in error_msg:
+                if attempt < max_retries - 1:
+                    print(f"Bot detection triggered, waiting before retry...")
+                    time.sleep(3 * (attempt + 1))
+                    continue
+                else:
+                    raise Exception("YouTube is blocking requests. Please check proxy configuration or try again later.")
+            
+            # Other errors - retry or raise
+            if attempt == max_retries - 1:
+                raise Exception(f"Failed after {max_retries} attempts: {str(e)}")
+    
+    raise Exception("Failed to fetch transcript after all attempts")
+
 if __name__ == "__main__":
     app.run()
