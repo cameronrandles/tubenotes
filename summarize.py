@@ -4,7 +4,7 @@ from structured_output import response_schema
 import json
 
 # Initialize LLM
-model = genai.GenerativeModel("gemini-2.5-flash")
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 def summarize_transcript(transcript):
     prompt = f"""Summarize the following text using two bullets per section.

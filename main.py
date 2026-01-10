@@ -446,33 +446,5 @@ def fetch_transcript(video_id):
     raise Exception("Failed to fetch transcript")
 
 
-
-@app.route('/test-transcript-with-proxy')
-def test_transcript_with_proxy():
-    """Test if transcript fetching works with proxy"""
-    test_video_id = 'jNQXAC9IVRw'  # "Me at the zoo" - known to have captions
-    
-    try:
-        print(f"Testing transcript fetch for {test_video_id}")
-        transcript = fetch_transcript(test_video_id)
-        
-        return jsonify({
-            'status': 'success',
-            'video_id': test_video_id,
-            'transcript_length': len(transcript),
-            'preview': transcript[:200],
-            'proxy_used': proxy_url is not None,
-            'message': '✓ Transcript fetching is working!'
-        })
-        
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'video_id': test_video_id,
-            'error': str(e),
-            'proxy_used': proxy_url is not None,
-            'message': '✗ Transcript fetching failed'
-        }), 500
-
 if __name__ == "__main__":
     app.run()
