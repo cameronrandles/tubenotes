@@ -2,7 +2,9 @@ import os
 import sys
 
 try:
-    from flask import Flask, render_template, request, jsonify, session
+    from flask import Flask, request, jsonify, render_template, session
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
     from googleapiclient.discovery import build
     from summarize import summarize_transcript
     from youtube_transcript_api import YouTubeTranscriptApi
@@ -13,6 +15,14 @@ except ImportError as e:
     raise
 
 app = Flask(__name__)
+
+# Initialize rate limiter
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],  # Global limits
+    storage_uri="memory://",  # Use memory storage (simple, works on Render)
+)
 
 # Get secret key
 app.secret_key = os.environ.get('SECRET_KEY', 'supersecretkey')
@@ -26,27 +36,49 @@ youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
 def home():
     return render_template('index.html')
 
+
 @app.route('/privacy-policy')
 def privacy_policy():
     return render_template('privacy-policy.html')
 
+
 @app.route('/terms-of-service')
 def terms_of_service():
     return render_template('terms-of-service.html')
+
 
 @app.route('/videos')
 def videos():    
     videos = default_videos()
     return jsonify(videos)
 
-# REMOVE session usage - it doesn't work on Vercel serverless
-# Delete these lines:
-# session['next_page_token'] = ...
-# session['prev_page_token'] = ...
 
-# Instead, return tokens to client and pass them back:
+# Protect the summarize endpoint (most expensive)
+@app.route('/summarize')
+@limiter.limit("10 per hour")  # Max 10 summaries per hour per IP
+def summarize():
+    video_id = request.args.get('videoId')
+    
+    print(f"=== SUMMARIZE REQUEST ===")
+    print(f"Video ID: {video_id}")
+    
+    if not video_id:
+        return jsonify({'error': 'No video ID provided'}), 400
+    
+    try:
+        transcript = fetch_transcript(video_id)
+        summary = summarize_transcript(transcript)
+        return jsonify({'summary': summary})
+        
+    except Exception as e:
+        import traceback
+        print(f"ERROR: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+    
 
+# Protect search endpoint
 @app.route('/search')
+@limiter.limit("30 per minute")  # Max 30 searches per minute per IP
 def search():
     query = request.args.get('query')
     
@@ -58,61 +90,48 @@ def search():
         }), 400
     
     try:
-        result = search_videos(query.strip())
-        return jsonify(result)
+        videos = search_videos(query.strip())
+        return jsonify(videos)
     except Exception as e:
-        print(f"Search error: {e}", file=sys.stderr)
+        print(f"Search error: {e}")
         return jsonify({
             'error': str(e),
             'total_pages': 0,
             'data': []
         }), 500
+    
 
+# Lighter limits for pagination
 @app.route('/next')
+@limiter.limit("60 per minute")
 def next():
     query = request.args.get('query')
-    
     try:
-        videos = next_page(query)  # No page_token parameter
+        videos = next_page(query)
         return jsonify(videos)
     except Exception as e:
-        print(f"Next page error: {e}")
         return jsonify({'error': str(e), 'data': []}), 500
+    
 
 @app.route('/prev')
+@limiter.limit("60 per minute")
 def prev():
     query = request.args.get('query')
-    
     try:
-        videos = prev_page(query)  # No page_token parameter
+        videos = prev_page(query)
         return jsonify(videos)
     except Exception as e:
-        print(f"Prev page error: {e}")
         return jsonify({'error': str(e), 'data': []}), 500
-
-@app.route('/summarize', methods=['GET'])
-def summarize():
-    video_id = request.args.get('videoId')
-    if not video_id:
-        return jsonify({"error": "Missing or invalid videoId"}), 400
-
-    transcript = fetch_transcript(video_id)
-    if not transcript:
-        return jsonify({"error": "Transcript could not be fetched"}), 500
-
-    summary = summarize_transcript(transcript)
-    if not summary:
-        return jsonify({"error": "Failed to summarize transcript"}, 500)
-
-    return jsonify({"summary": summary})
     
-
-    # except groq.BadRequestError:
-        # print('Model context length exceeded.')
-        # return jsonify({"error": "Model context length exceeded."}), 400
-    # except groq.RateLimitError:
-        # print('Rate limit reached for model.')
-        # return jsonify({"error": "Rate limit reached for model."}), 400
+    
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    """Custom response when rate limit is exceeded"""
+    return jsonify({
+        'error': 'Rate limit exceeded',
+        'message': 'You have made too many requests. Please try again later.',
+        'retry_after': e.description
+    }), 429
 
 
 def default_videos():
@@ -146,6 +165,7 @@ def default_videos():
     total_pages = response['pageInfo']['totalResults'] // response['pageInfo']['resultsPerPage']
     
     return {'total_pages': total_pages, 'data': videos}
+
 
 def search_videos(query):
     request = youtube.search().list(
@@ -214,6 +234,7 @@ def search_videos(query):
     total_pages = total_results // results_per_page if results_per_page > 0 else 0
 
     return {'total_pages': total_pages, 'data': videos}
+
 
 def next_page(query=None):
     if query:
@@ -285,6 +306,7 @@ def next_page(query=None):
     
     return {'total_pages': total_pages, 'data': videos}
 
+
 def prev_page(query=None):
     if query:
         request = youtube.search().list(
@@ -354,6 +376,7 @@ def prev_page(query=None):
     
     return {'total_pages': total_pages, 'data': videos}
 
+
 def set_page_tokens(response):
     """Store tokens in session"""
     session['next_page_token'] = response.get('nextPageToken')
@@ -379,74 +402,79 @@ def fetch_transcript(video_id):
     if not isinstance(video_id, str) or not video_id.strip():
         raise ValueError("Invalid video ID")
 
-    # Configure proxies
-    proxies = None
-    if proxy_url:
-        proxies = {
-            'http': proxy_url,
-            'https': proxy_url
-        }
-        print(f"Using proxy for transcript fetch")
-    else:
-        print("WARNING: No proxy configured, may get blocked by YouTube")
-    
-    max_retries = 3
+    max_retries = 2
     
     for attempt in range(max_retries):
         try:
-            time.sleep(1 * (attempt + 1))  # Exponential backoff
+            time.sleep(1)
             
-            print(f"Attempt {attempt + 1}/{max_retries} fetching transcript for {video_id}")
+            print(f"Attempt {attempt + 1}: Fetching transcript for {video_id}")
             
-            # Try with proxy
-            if proxies:
+            # Try WITHOUT proxy first
+            if attempt == 0:
+                print("Trying without proxy...")
                 transcript_data = YouTubeTranscriptApi.get_transcript(
                     video_id,
-                    languages=['en', 'es', 'hi'],
-                    proxies=proxies
+                    languages=['en']
                 )
             else:
-                transcript_data = YouTubeTranscriptApi.get_transcript(
-                    video_id,
-                    languages=['en', 'es', 'hi']
-                )
+                # Try WITH proxy second
+                print("Trying with proxy...")
+                if proxy_url:
+                    proxies = {'http': proxy_url, 'https': proxy_url}
+                    transcript_data = YouTubeTranscriptApi.get_transcript(
+                        video_id,
+                        languages=['en'],
+                        proxies=proxies
+                    )
+                else:
+                    raise Exception("No proxy configured")
             
-            # Combine transcript text
             transcript_text = " ".join([entry['text'] for entry in transcript_data])
             
             if not transcript_text.strip():
                 raise ValueError("Transcript is empty")
             
-            print(f"✓ Successfully fetched transcript: {len(transcript_text)} characters")
+            print(f"✓ Success on attempt {attempt + 1}")
             return transcript_text
             
-        except TranscriptsDisabled:
-            raise Exception("This video has transcripts disabled")
-            
-        except NoTranscriptFound:
-            raise Exception("No transcript available in English, Spanish, or Hindi")
-            
-        except VideoUnavailable:
-            raise Exception("Video is unavailable or private")
-            
         except Exception as e:
-            error_msg = str(e).lower()
             print(f"Attempt {attempt + 1} failed: {e}")
-            
-            # Check if it's a bot detection error
-            if "sign in" in error_msg or "bot" in error_msg:
-                if attempt < max_retries - 1:
-                    print(f"Bot detection triggered, waiting before retry...")
-                    time.sleep(3 * (attempt + 1))
-                    continue
-                else:
-                    raise Exception("YouTube is blocking requests. Please check proxy configuration or try again later.")
-            
-            # Other errors - retry or raise
             if attempt == max_retries - 1:
-                raise Exception(f"Failed after {max_retries} attempts: {str(e)}")
+                raise
     
-    raise Exception("Failed to fetch transcript after all attempts")
+    raise Exception("Failed to fetch transcript")
+
+
+@app.route('/test-transcript')
+def test_transcript():
+    """Test with videos known to have captions"""
+    test_videos = [
+        'jNQXAC9IVRw',  # "Me at the zoo" - first YouTube video
+        'dQw4w9WgXcQ',  # Rick Astley - Never Gonna Give You Up
+        '9bZkp7q19f0',  # PSY - Gangnam Style
+    ]
+    
+    results = {}
+    
+    for video_id in test_videos:
+        try:
+            transcript = fetch_transcript(video_id)
+            results[video_id] = {
+                'success': True,
+                'length': len(transcript),
+                'preview': transcript[:200]
+            }
+        except Exception as e:
+            results[video_id] = {
+                'success': False,
+                'error': str(e)
+            }
+    
+    return jsonify({
+        'youtube_transcript_api_version': YouTubeTranscriptApi.__version__,
+        'results': results
+    })
 
 if __name__ == "__main__":
     app.run()
