@@ -371,19 +371,42 @@ def fetch_transcript(video_id):
     if not isinstance(video_id, str) or not video_id.strip():
         raise ValueError("Invalid video ID")
     
-    url = f"https://www.youtube.com/watch?v={video_id}"
+    errors = []
     
-    ydl_opts = {
-        'skip_download': True,
-        'writesubtitles': True,
-        'writeautomaticsub': True,
-        'subtitleslangs': ['en'],
-        'quiet': True,
-        'no_warnings': True,
-        'nocheckcertificate': True,
-    }
-    
+    # Method 1: youtube-transcript-api
     try:
+        print("Trying youtube-transcript-api...")
+        transcript_data = YouTubeTranscriptApi.get_transcript(
+            video_id,
+            languages=['en']
+        )
+        transcript_text = " ".join([entry['text'] for entry in transcript_data])
+        if transcript_text.strip():
+            return transcript_text
+    except Exception as e:
+        errors.append(f"youtube-transcript-api: {str(e)}")
+        print(f"Method 1 failed: {e}")
+    
+    # Method 2: yt-dlp with different options
+    try:
+        print("Trying yt-dlp...")
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        
+        ydl_opts = {
+            'skip_download': True,
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'subtitleslangs': ['en'],
+            'quiet': True,
+            'no_warnings': True,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android'],
+                }
+            }
+        }
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
@@ -393,43 +416,35 @@ def fetch_transcript(video_id):
                 subtitles = info['subtitles']['en']
             elif 'automatic_captions' in info and 'en' in info['automatic_captions']:
                 subtitles = info['automatic_captions']['en']
-            else:
-                raise Exception("No English subtitles found")
             
-            # Find the best subtitle format
-            subtitle_url = None
-            for sub in subtitles:
-                if sub.get('ext') in ['json3', 'srv3', 'srv2', 'srv1']:
-                    subtitle_url = sub.get('url')
-                    break
-            
-            if not subtitle_url:
-                raise Exception("No suitable subtitle format found")
-            
-            # Download and parse subtitles
-            import urllib.request
-            import json
-            
-            response = urllib.request.urlopen(subtitle_url)
-            data = json.loads(response.read())
-            
-            # Extract text from JSON3 format
-            transcript_text = ""
-            if 'events' in data:
-                for event in data['events']:
-                    if 'segs' in event:
-                        for seg in event['segs']:
-                            if 'utf8' in seg:
-                                transcript_text += seg['utf8'] + " "
-            
-            if not transcript_text.strip():
-                raise ValueError("Transcript is empty")
-            
-            return transcript_text.strip()
-            
+            if subtitles:
+                for sub in subtitles:
+                    if sub.get('ext') in ['json3', 'srv3']:
+                        subtitle_url = sub.get('url')
+                        if subtitle_url:
+                            import urllib.request
+                            import json
+                            
+                            response = urllib.request.urlopen(subtitle_url)
+                            data = json.loads(response.read())
+                            
+                            transcript_text = ""
+                            if 'events' in data:
+                                for event in data['events']:
+                                    if 'segs' in event:
+                                        for seg in event['segs']:
+                                            if 'utf8' in seg:
+                                                transcript_text += seg['utf8'] + " "
+                            
+                            if transcript_text.strip():
+                                return transcript_text.strip()
     except Exception as e:
-        print(f"yt-dlp error: {e}")
-        raise Exception(f"Failed to fetch transcript: {str(e)}")
+        errors.append(f"yt-dlp: {str(e)}")
+        print(f"Method 2 failed: {e}")
+    
+    # All methods failed
+    error_msg = " | ".join(errors)
+    raise Exception(f"All transcript methods failed: {error_msg}")
 
 # Run the test
 if __name__ == "__main__":
