@@ -53,9 +53,8 @@ def videos():
     return jsonify(videos)
 
 
-# Protect the summarize endpoint (most expensive)
 @app.route('/summarize')
-@limiter.limit("10 per hour")  # Max 10 summaries per hour per IP
+@limiter.limit("10 per hour")
 def summarize():
     video_id = request.args.get('videoId')
     
@@ -66,13 +65,31 @@ def summarize():
         return jsonify({'error': 'No video ID provided'}), 400
     
     try:
+        print(f"Step 1: Fetching transcript...")
         transcript = fetch_transcript(video_id)
+        print(f"Step 1 SUCCESS: {len(transcript)} chars")
+        
+        print(f"Step 2: Generating summary...")
         summary = summarize_transcript(transcript)
+        
+        # DEBUG: Log what we're returning
+        print("=" * 60)
+        print("SUMMARY DATA:")
+        print(type(summary))
+        print(summary)
+        print("=" * 60)
+        
+        print(f"Step 2 SUCCESS")
+        
         return jsonify({'summary': summary})
         
     except Exception as e:
         import traceback
-        print(f"ERROR: {traceback.format_exc()}")
+        print("=" * 60)
+        print("ERROR:")
+        print(traceback.format_exc())
+        print("=" * 60)
+        
         return jsonify({'error': str(e)}), 500
     
 
