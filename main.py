@@ -401,22 +401,39 @@ def set_page_tokens(response):
     session['prev_page_token'] = response.get('prevPageToken')
 
 
-# Decodo proxy settings
+import uuid
+
+# Store credentials only
 DECODO_USERNAME = os.environ.get('DECODO_USERNAME')
 DECODO_PASSWORD = os.environ.get('DECODO_PASSWORD')
-DECODO_HOST = os.environ.get('DECODO_HOST', 'gate.decodo.com')
-DECODO_PORT = os.environ.get('DECODO_PORT', '8080')
+DECODO_HOST = os.environ.get('DECODO_HOST', 'us.decodo.com')
+DECODO_PORT = os.environ.get('DECODO_PORT', '10001')
 
-# Build proxy URL
-if DECODO_USERNAME and DECODO_PASSWORD:
-    proxy_url = f"http://{DECODO_USERNAME}:{DECODO_PASSWORD}@{DECODO_HOST}:{DECODO_PORT}"
-else:
-    proxy_url = None
 
-print(f"Proxy configured: {proxy_url[:30] if proxy_url else 'None'}...")
+def get_rotating_proxy():
+    """Generate proxy URL with new session ID"""
+    if not DECODO_USERNAME or not DECODO_PASSWORD:
+        return None
+    
+    # New session ID for this request
+    session_id = str(uuid.uuid4())[:10]
+    username = f"{DECODO_USERNAME}-session-{session_id}"
+    
+    proxy = f"http://{username}:{DECODO_PASSWORD}@{DECODO_HOST}:{DECODO_PORT}"
+    print(f"Using session: {session_id}")
+    
+    return proxy
+
+# Don't create global proxy_url
 
 
 def fetch_transcript(video_id):
+    # Get fresh proxy for THIS request
+    proxy_url = get_rotating_proxy()
+    
+    if proxy_url:
+        ydl_opts['proxy'] = proxy_url
+
     if not isinstance(video_id, str) or not video_id.strip():
         raise ValueError("Invalid video ID")
 
