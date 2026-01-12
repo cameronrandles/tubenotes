@@ -11,6 +11,9 @@ try:
     from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound, TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
     import yt_dlp
     import time
+    import urllib.request
+    import json
+    import re
 except ImportError as e:
     print(f"Import error: {e}", file=sys.stderr)
     raise
@@ -428,22 +431,17 @@ def get_rotating_proxy():
 
 
 def fetch_transcript(video_id):
-    # Get fresh proxy for THIS request
-    proxy_url = get_rotating_proxy()
-    
-    if proxy_url:
-        ydl_opts['proxy'] = proxy_url
-
     if not isinstance(video_id, str) or not video_id.strip():
         raise ValueError("Invalid video ID")
 
     errors = []
     url = f"https://www.youtube.com/watch?v={video_id}"
     
-    # Method 1: yt-dlp with proxy (most reliable)
+    # Method 1: yt-dlp with proxy (most reliable for bot detection)
     try:
         print(f"Method 1: yt-dlp with proxy")
         
+        # Step 1: Create ydl_opts dictionary
         ydl_opts = {
             'skip_download': True,
             'writesubtitles': True,
@@ -454,43 +452,46 @@ def fetch_transcript(video_id):
             'nocheckcertificate': True,
         }
         
-        # Add proxy if configured
+        # Step 2: Add proxy if configured
         if proxy_url:
             ydl_opts['proxy'] = proxy_url
-            print(f"Using proxy with yt-dlp")
+            print(f"✓ Using proxy with yt-dlp")
+        else:
+            print("⚠ No proxy configured for yt-dlp")
         
+        # Step 3: Extract video info
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
-            # Get English subtitles
+            # Step 4: Get English subtitles
             subtitles = None
             if 'subtitles' in info and 'en' in info['subtitles']:
                 subtitles = info['subtitles']['en']
+                print("Found manual English subtitles")
             elif 'automatic_captions' in info and 'en' in info['automatic_captions']:
                 subtitles = info['automatic_captions']['en']
+                print("Found automatic English captions")
             
             if not subtitles:
                 raise Exception("No English subtitles available")
             
-            # Find subtitle URL
+            # Step 5: Find best subtitle URL
             subtitle_url = None
             for sub in subtitles:
                 ext = sub.get('ext', '')
                 if ext in ['json3', 'srv3', 'srv2', 'srv1']:
                     subtitle_url = sub.get('url')
+                    print(f"Found subtitle format: {ext}")
                     break
             
-            if not subtitle_url and subtitles:
+            if not subtitle_url and len(subtitles) > 0:
                 subtitle_url = subtitles[0].get('url')
+                print(f"Using fallback subtitle format: {subtitles[0].get('ext')}")
             
             if not subtitle_url:
                 raise Exception("No subtitle URL found")
             
-            # Download subtitles
-            import urllib.request
-            import json
-            
-            # Use proxy for subtitle download too
+            # Step 6: Download subtitle file
             if proxy_url:
                 proxy_handler = urllib.request.ProxyHandler({
                     'http': proxy_url,
@@ -498,19 +499,21 @@ def fetch_transcript(video_id):
                 })
                 opener = urllib.request.build_opener(proxy_handler)
                 urllib.request.install_opener(opener)
+                print("Using proxy for subtitle download")
             
             req = urllib.request.Request(
                 subtitle_url,
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
             )
+            
             response = urllib.request.urlopen(req, timeout=30)
             content = response.read()
             
-            # Parse subtitle data
+            # Step 7: Parse subtitle content
             transcript_text = ""
             
             try:
-                # Try JSON format
+                # Try JSON3 format
                 data = json.loads(content)
                 
                 if 'events' in data:
@@ -519,22 +522,28 @@ def fetch_transcript(video_id):
                             for seg in event['segs']:
                                 if 'utf8' in seg:
                                     transcript_text += seg['utf8'] + " "
+                
+                print("Parsed JSON3 subtitle format")
                                     
             except json.JSONDecodeError:
-                # Try plain text/VTT format
-                import re
+                # Try VTT/plain text format
                 text = content.decode('utf-8', errors='ignore')
                 
                 # Remove VTT headers and timestamps
                 text = re.sub(r'WEBVTT\n', '', text)
+                text = re.sub(r'Kind:.*\n', '', text)
+                text = re.sub(r'Language:.*\n', '', text)
                 text = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}', '', text)
                 text = re.sub(r'\n\d+\n', ' ', text)
-                text = re.sub(r'<[^>]+>', '', text)
+                text = re.sub(r'<[^>]+>', '', text)  # Remove HTML tags
                 text = ' '.join(text.split())
                 transcript_text = text
+                
+                print("Parsed VTT subtitle format")
             
+            # Step 8: Validate and return
             if transcript_text.strip():
-                print(f"✓ Method 1 success: {len(transcript_text)} chars")
+                print(f"✓ Method 1 SUCCESS: {len(transcript_text)} characters")
                 return transcript_text.strip()
             else:
                 raise Exception("Parsed transcript is empty")
@@ -542,12 +551,12 @@ def fetch_transcript(video_id):
     except Exception as e:
         error = str(e)
         errors.append(f"yt-dlp: {error}")
-        print(f"✗ Method 1 failed: {error}")
+        print(f"✗ Method 1 FAILED: {error}")
     
-    # Method 2: youtube-transcript-api without proxy (fallback)
+    # Method 2: youtube-transcript-api (fallback, simpler but may be blocked)
     try:
         print(f"Method 2: youtube-transcript-api (no proxy)")
-        time.sleep(2)
+        time.sleep(2)  # Rate limiting
         
         transcript_data = YouTubeTranscriptApi.get_transcript(
             video_id,
@@ -557,24 +566,30 @@ def fetch_transcript(video_id):
         transcript_text = " ".join([entry['text'] for entry in transcript_data])
         
         if transcript_text.strip():
-            print(f"✓ Method 2 success: {len(transcript_text)} chars")
+            print(f"✓ Method 2 SUCCESS: {len(transcript_text)} characters")
             return transcript_text
             
     except Exception as e:
         error = str(e)
         errors.append(f"youtube-transcript-api: {error}")
-        print(f"✗ Method 2 failed: {error}")
+        print(f"✗ Method 2 FAILED: {error}")
     
-    # Both methods failed
+    # Both methods failed - provide helpful error message
     all_errors = " | ".join(errors)
-    print(f"All methods failed: {all_errors}")
+    print(f"=" * 60)
+    print(f"ALL METHODS FAILED")
+    print(f"Errors: {all_errors}")
+    print(f"=" * 60)
     
+    # Determine appropriate error message
     if "no subtitles" in all_errors.lower() or "transcripts disabled" in all_errors.lower():
         raise Exception("This video does not have captions available. Please try a different video.")
     elif "unavailable" in all_errors.lower() or "private" in all_errors.lower():
         raise Exception("Video is unavailable or private")
+    elif "bot" in all_errors.lower() or "sign in" in all_errors.lower():
+        raise Exception("YouTube is blocking requests. Please try again later.")
     else:
-        raise Exception("Unable to fetch transcript. The video may not have captions, or YouTube is blocking requests.")
+        raise Exception("Unable to fetch transcript. The video may not have captions.")
     
 
 if __name__ == "__main__":
