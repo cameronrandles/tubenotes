@@ -404,44 +404,36 @@ def set_page_tokens(response):
     session['prev_page_token'] = response.get('prevPageToken')
 
 
-import uuid
-
 # Store credentials only
 DECODO_USERNAME = os.environ.get('DECODO_USERNAME')
 DECODO_PASSWORD = os.environ.get('DECODO_PASSWORD')
 DECODO_HOST = os.environ.get('DECODO_HOST', 'us.decodo.com')
 DECODO_PORT = os.environ.get('DECODO_PORT', '10001')
 
-
-def get_rotating_proxy():
-    """Generate proxy URL with new session ID"""
-    if not DECODO_USERNAME or not DECODO_PASSWORD:
-        return None
-    
-    # New session ID for this request
-    session_id = str(uuid.uuid4())[:10]
-    username = f"{DECODO_USERNAME}-session-{session_id}"
-    
-    proxy = f"http://{username}:{DECODO_PASSWORD}@{DECODO_HOST}:{DECODO_PORT}"
-    print(f"Using session: {session_id}")
-    
-    return proxy
-
-# Don't create global proxy_url
+# Build proxy URL (GLOBAL)
+if DECODO_USERNAME and DECODO_PASSWORD:
+    proxy_url = f"http://{DECODO_USERNAME}:{DECODO_PASSWORD}@{DECODO_HOST}:{DECODO_PORT}"
+    print(f"✓ Proxy configured: {proxy_url[:30]}...")
+else:
+    proxy_url = None
+    print("⚠ No proxy configured")
 
 
-def fetch_transcript(video_id):
+def fetch_transcript(video_id, proxy=None):
     if not isinstance(video_id, str) or not video_id.strip():
         raise ValueError("Invalid video ID")
 
+    # Use passed proxy or fall back to global
+    if proxy is None:
+        proxy = proxy_url  # Use global if not passed
+    
     errors = []
     url = f"https://www.youtube.com/watch?v={video_id}"
     
-    # Method 1: yt-dlp with proxy (most reliable for bot detection)
+    # Method 1: yt-dlp with proxy
     try:
-        print(f"Method 1: yt-dlp with proxy")
+        print(f"Method 1: yt-dlp")
         
-        # Step 1: Create ydl_opts dictionary
         ydl_opts = {
             'skip_download': True,
             'writesubtitles': True,
@@ -452,12 +444,10 @@ def fetch_transcript(video_id):
             'nocheckcertificate': True,
         }
         
-        # Step 2: Add proxy if configured
-        if proxy_url:
-            ydl_opts['proxy'] = proxy_url
-            print(f"✓ Using proxy with yt-dlp")
-        else:
-            print("⚠ No proxy configured for yt-dlp")
+        # Use the proxy parameter
+        if proxy:
+            ydl_opts['proxy'] = proxy
+            print(f"✓ Using proxy")
         
         # Step 3: Extract video info
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
